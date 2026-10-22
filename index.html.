@@ -1,1 +1,213 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Pulse Music</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #101010;
+  --card: #1d1d1d;
+  --green: #1ed760;
+  --muted: #aaa;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 22px 16px 100px;
+  background: var(--bg); color: white;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+h1 { font-size: 29px; margin-bottom: 4px; }
+p { color: var(--muted); }
+.logo { color: var(--green); font-weight: 800; }
+input {
+  width: 100%; padding: 16px; border: 0;
+  border-radius: 12px; background: #292929;
+  color: white; font-size: 16px; margin: 18px 0;
+}
+button {
+  cursor: pointer; border: 0; border-radius: 22px;
+  padding: 11px 16px; font-weight: 700;
+}
+.green { background: var(--green); color: black; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tabs button { background: #292929; color: white; }
+#results { display: grid; gap: 12px; }
+.track {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--card); padding: 10px; border-radius: 13px;
+}
+.track img { width: 62px; height: 62px; border-radius: 8px; }
+.info { flex: 1; min-width: 0; }
+.name { font-weight: 700; overflow-wrap: anywhere; }
+.artist { color: var(--muted); font-size: 13px; margin-top: 5px; }
+.actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.actions button { font-size: 12px; padding: 8px 10px; }
+audio { width: 100%; margin-top: 8px; }
+nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #181818; display: flex;
+  justify-content: space-around; padding: 16px 5px;
+}
+nav button { background: transparent; color: white; }
+small { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="logo">● PULSE MUSIC</div>
+<h1>Твоя музыка.</h1>
+<p>Находи треки и открывай новые звучания.</p>
+
+<input id="q" placeholder="Что хочешь послушать?">
+<div class="tabs">
+  <button onclick="searchMusic('')">Все</button>
+  <button onclick="searchMusic('pop')">Поп</button>
+  <button onclick="searchMusic('rock')">Рок</button>
+  <button onclick="searchMusic('hip hop')">Хип-хоп</button>
+</div>
+
+<h2 id="heading">Поиск музыки</h2>
+<div id="results">
+  <p>Введи название песни или исполнителя.</p>
+</div>
+
+<nav>
+  <button onclick="home()">⌂<br><small>Главная</small></button>
+  <button onclick="document.getElementById('q').focus()">⌕<br><small>Поиск</small></button>
+  <button onclick="showSaved()">♡<br><small>Избранное</small></button>
+</nav>
+
+<script>
+const tg = window.Telegram?.WebApp;
+tg?.ready();
+tg?.expand();
+
+const results = document.getElementById('results');
+const q = document.getElementById('q');
+let saved = [];
+let tracks = [];
+
+function home() {
+  q.value = '';
+  results.innerHTML = '<p>Введи название песни или исполнителя.</p>';
+  document.getElementById('heading').textContent = 'Поиск музыки';
+}
+
+q.addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchMusic(q.value);
+});
+
+async function searchMusic(term) {
+  term = (term || q.value).trim();
+  if (!term) return;
+  q.value = term;
+  document.getElementById('heading').textContent = 'Результаты поиска';
+  results.innerHTML = '<p>Ищем музыку...</p>';
+
+  try {
+    const url = 'https://itunes.apple.com/search?term=' +
+      encodeURIComponent(term) +
+      '&entity=song&limit=25';
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Search failed');
+    const data = await response.json();
+    tracks = data.results || [];
+    renderTracks(tracks);
+  } catch (e) {
+    results.innerHTML =
+      '<p>Не удалось загрузить результаты. Проверь интернет и попробуй ещё раз.</p>';
+  }
+}
+
+function renderTracks(list) {
+  results.innerHTML = '';
+  if (!list.length) {
+    results.innerHTML = '<p>Ничего не найдено. Попробуй другой запрос.</p>';
+    return;
+  }
+
+  list.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'track';
+
+    const img = document.createElement('img');
+    img.src = t.artworkUrl100 || '';
+    img.alt = 'Обложка';
+
+    const info = document.createElement('div');
+    info.className = 'info';
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = t.trackName || 'Без названия';
+
+    const artist = document.createElement('div');
+    artist.className = 'artist';
+    artist.textContent = t.artistName || 'Неизвестный исполнитель';
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+
+    const play = document.createElement('button');
+    play.className = 'green';
+    play.textContent = t.previewUrl ? '▶ Слушать фрагмент' : 'Нет фрагмента';
+    play.disabled = !t.previewUrl;
+    play.onclick = () => playPreview(t, info);
+
+    const save = document.createElement('button');
+    save.textContent = saved.some(s => s.trackId === t.trackId)
+      ? '♥ Сохранено' : '♡ Сохранить';
+    save.onclick = () => {
+      if (!saved.some(s => s.trackId === t.trackId)) {
+        saved.push(t);
+      } else {
+        saved = saved.filter(s => s.trackId !== t.trackId);
+      }
+      save.textContent = saved.some(s => s.trackId === t.trackId)
+        ? '♥ Сохранено' : '♡ Сохранить';
+    };
+
+    const link = document.createElement('button');
+    link.textContent = 'Открыть трек';
+    link.onclick = () => {
+      if (t.trackViewUrl) {
+        if (tg?.openLink) tg.openLink(t.trackViewUrl);
+        else window.open(t.trackViewUrl, '_blank');
+      }
+    };
+
+    actions.append(play, save, link);
+    info.append(name, artist, actions);
+    card.append(img, info);
+    results.append(card);
+  });
+}
+
+function playPreview(track, container) {
+  document.querySelectorAll('audio').forEach(a => {
+    a.pause();
+    a.remove();
+  });
+  const audio = document.createElement('audio');
+  audio.controls = true;
+  audio.src = track.previewUrl;
+  audio.preload = 'none';
+  container.append(audio);
+  audio.play().catch(() => {});
+}
+
+function showSaved() {
+  document.getElementById('heading').textContent = 'Избранное';
+  renderTracks(saved);
+}
+
+q.addEventListener('input', () => {
+  if (!q.value.trim()) return;
+});
+</script>
+</body>
+</html>
+
